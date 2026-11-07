@@ -1,0 +1,23 @@
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets
+.env
+
+# Task 4 runtime database
+*.db
+*.db-wal
+*.db-shm
+
+# Local Claude Code state
+.claude/
+
+# macOS
+.DS_Store
