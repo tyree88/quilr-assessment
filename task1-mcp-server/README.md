@@ -15,6 +15,7 @@ MCP Chat is a command-line interface application that enables interactive chat c
 
 ```
 ANTHROPIC_API_KEY=""  # Enter your Anthropic API secret key
+CLAUDE_MODEL=""       # Model ID, e.g. claude-sonnet-5-5 (main.py exits if empty)
 ```
 
 ### Step 2: Install dependencies
@@ -60,7 +61,7 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 2. Install dependencies, and set `USE_UV=0` in the `.env` file:
 
 ```bash
-pip install "anthropic<1" python-dotenv prompt-toolkit "mcp[cli]>=1.8.0,<2"
+pip install "anthropic<1" python-dotenv prompt-toolkit "mcp[cli]>=2,<3"
 ```
 
 3. Run the project

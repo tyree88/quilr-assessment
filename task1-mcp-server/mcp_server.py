@@ -1,6 +1,6 @@
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
-mcp = FastMCP("DocumentMCP", log_level="ERROR")
+mcp = MCPServer("DocumentMCP", log_level="ERROR")
 
 
 docs = {
