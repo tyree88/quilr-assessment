@@ -33,19 +33,21 @@ def test_customer_id_accepts_valid():
 
 @pytest.mark.parametrize(
     "amount",
-    [0, -5, float("nan"), float("inf"), 1_000_000.01, "10", True, None],
+    [0, -5, float("nan"), float("inf"), 1_000_000.01, "10", True, None, 0.005, 1e-9, 10.001],
 )
 def test_amount_rejects_malformed(amount):
     with pytest.raises(ValidationError):
         RefundRequest.model_validate({**VALID, "amount": amount})
 
 
-@pytest.mark.parametrize("amount", [0.01, 10, 1_000_000])
+@pytest.mark.parametrize("amount", [0.01, 0.1, 10, 10.07, 1_000_000])
 def test_amount_accepts_valid(amount):
     assert RefundRequest.model_validate({**VALID, "amount": amount}).amount == amount
 
 
-@pytest.mark.parametrize("reason", ["too short", "   short    ", "", 12345678901, None])
+@pytest.mark.parametrize(
+    "reason", ["too short", "   short    ", "", 12345678901, None, "\u200b" * 12, "short\u200b\u200b\u200b\u200b\u200b"]
+)
 def test_reason_rejects_malformed(reason):
     with pytest.raises(ValidationError):
         RefundRequest.model_validate({**VALID, "reason": reason})

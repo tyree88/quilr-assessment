@@ -19,17 +19,21 @@ REQUEST_MODELS = {"get_customer_record": GetCustomerRequest, "trigger_refund": R
 async def reject_malformed_arguments(ctx, call_next):
     """Run before the SDK's own argument check, so format errors become JSON-RPC -32602, not isError."""
     if ctx.method == "tools/call" and isinstance(ctx.params, dict):
-        model = REQUEST_MODELS.get(ctx.params.get("name"))
-        if model is not None:
-            try:
-                model.model_validate(ctx.params.get("arguments") or {})
-            except ValidationError as exc:
-                # Field names and rule messages only: never echo the caller's values back.
-                details = [
-                    {"field": ".".join(map(str, err["loc"])) or "arguments", "error": err["msg"]}
-                    for err in exc.errors()
-                ]
-                raise MCPError(code=INVALID_PARAMS, message="Invalid params", data=details) from None
+        name = ctx.params.get("name")
+        model = REQUEST_MODELS.get(name) if isinstance(name, str) else None
+        if model is None:
+            # MCP spec: an unknown tool is a protocol error. The SDK would return an isError result.
+            raise MCPError(code=INVALID_PARAMS, message="Unknown tool", data=[{"field": "name", "error": "unknown tool"}])
+        args = ctx.params.get("arguments")
+        try:
+            model.model_validate({} if args is None else args)
+        except ValidationError as exc:
+            # Field names and rule messages only: never echo the caller's values back.
+            details = [
+                {"field": ".".join(map(str, err["loc"])) or "arguments", "error": err["msg"]}
+                for err in exc.errors()
+            ]
+            raise MCPError(code=INVALID_PARAMS, message="Invalid params", data=details) from None
     return await call_next(ctx)
 
 
