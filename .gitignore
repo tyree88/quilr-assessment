@@ -21,3 +21,6 @@ build/
 
 # macOS
 .DS_Store
+
+# Interview prep stays local
+INTERVIEW_NOTES.md

@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        task:
+          - task1-mcp-server
+          - task2-mcp-gateway
+          - task3-llm-stream-guardrail
+          - task4-rate-limit-fallback-router
+    defaults:
+      run:
+        working-directory: ${{ matrix.task }}
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        if: hashFiles(format('{0}/pyproject.toml', matrix.task)) != ''
+      # A task folder without a pyproject.toml has no code yet, so its steps are skipped.
+      - name: Install
+        if: hashFiles(format('{0}/pyproject.toml', matrix.task)) != ''
+        run: uv sync --locked
+      - name: Test
+        if: hashFiles(format('{0}/pyproject.toml', matrix.task)) != ''
+        run: uv run pytest -q
+      - name: Lint
+        if: hashFiles(format('{0}/pyproject.toml', matrix.task)) != ''
+        run: uvx ruff@0.17.4 check .
