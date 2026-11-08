@@ -96,7 +96,7 @@ Run the task's **Pressure Test Checklist** (in the task `CLAUDE.md`). For each i
 
 ### Phase 4 — Interview prep (per task)
 Produce `INTERVIEW_NOTES.md` in the task folder: 5–8 likely questions, my 2-line answers,
-the file:line that backs each.
+the file:line that backs each. **Local only**: it is gitignored, so never commit it or list it in an issue.
 
 ## Hard rules
 
