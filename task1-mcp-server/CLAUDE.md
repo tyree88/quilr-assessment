@@ -3,7 +3,7 @@
 Root `CLAUDE.md` rules apply. This file adds task context.
 **Format: take-home AND 60-min live coding.** Every line must be reproducible from memory under a clock.
 
-**Status:** Phases 0–2 done, Phase 3 pressure test done except the Inspector UI check. Phase 4 (`INTERVIEW_NOTES.md`) and the README error-strategy section are next.
+**Status:** Phases 0–2 done, Phase 3 pressure test done except the Inspector UI check. The README error-strategy section is written. Interview notes stay local (gitignored), not in the repo.
 
 ## Task statement (verbatim from assessment)
 
@@ -51,16 +51,18 @@ The SDK validates arguments against the tool's type hints **before** the functio
 
 Chosen fix: **`ServerMiddleware`** (`MCPServer(..., middleware=[fn])`, see `mcp/server/context.py` ~146–162). It runs before the SDK's check and sees the raw `ctx.method` / `ctx.params`. It validates against the same Pydantic request model and raises `MCPError(-32602)`. Result: **strict signatures** (the schema advertises `pattern` / `exclusiveMinimum` / `minLength`) **and** a real -32602, from one set of types.
 
-### Layout (flat, inside the course starter)
+### Layout (flat, server only)
+
+The Anthropic course "MCP Chat" starter (`core/`, `main.py`, `mcp_client.py`) was removed: the brief asks
+for a server, and the chat client added prints, lint findings, 3 dependencies and an API key. It is in
+history at `91b9fcc`. Demos use the MCP Inspector or a raw stdio session.
 
 ```
 task1-mcp-server/
-├── pyproject.toml        mcp[cli]>=2,<3 · pytest (dev) · [tool.ruff] excludes starter core/ and main.py
+├── pyproject.toml        mcp[cli]>=2,<3 · pytest (dev)
 ├── models.py             CustomerId · Amount · Reason (Annotated) · GetCustomerRequest · RefundRequest
 ├── store.py              Customer · Refund · InsufficientBalance · get_customer · record_refund (pure, no I/O)
 ├── mcp_server.py         reject_malformed_arguments middleware · MCPServer("customer-ops", version="0.1.0") · 2 tools
-├── mcp_client.py         starter client; list_tools/call_tool finished (prompts/resources still TODO)
-├── core/, main.py        starter chat app (Anthropic course) — not graded, lint-excluded
 └── tests/
     ├── conftest.py               anyio_backend fixture · autouse store reset
     ├── test_store.py             refund rules, rounding, zero balance
@@ -83,12 +85,16 @@ task1-mcp-server/
 | Return shape | Pydantic models → `structuredContent` + `outputSchema` | structured output for free |
 | Tests | anyio pytest plugin, no pytest-asyncio | anyio ships with `mcp` |
 | `additionalProperties` | set on the registered tool after decoration | no public SDK hook; private `_tool_manager`, marked `shortcut:` |
+| Unknown tool | `-32602` from middleware; `REQUEST_MODELS` is the allowlist | MCP spec lists unknown tools as protocol errors; the SDK default is `isError`. A test keeps the map equal to the registered tools |
+| Sub-cent amounts | rejected (`round(v, 2) != v`) | found by probing: `0.005` gave a receipt of 0.005 but cut the balance by 0.01 |
+| Invisible reason | at least 10 non-`Cf` characters | `strip()` keeps zero-width spaces; 12 of them passed `min_length=10` |
+| Malformed JSON / non-object `params` | no reply (SDK transport drops it) | documented in the README as a known limitation, not patched |
 
 ## Pressure Test Checklist (status from the 2026-11 run)
 
 - [x] `python mcp_server.py </dev/null` → exit 0, **0 bytes** on stdout and stderr
 - [x] `test_every_stdout_line_is_jsonrpc`: handshake, tools/list, -32602 ×2, isError, valid refund — every line JSON-RPC 2.0
-- [x] `grep -n "print(" mcp_server.py store.py models.py` → empty (the starter's `core/` prints run in the client process; scope documented in the README)
+- [x] `grep -rn "print(" --include='*.py' .` → only a comment in `tests/test_stdio_isolation.py`
 - [x] `python -c "import mcp_server"` → 0 bytes out (no import-time side effects)
 - [x] `cust-00001` / `amount: -5` / `reason: "too short"` → `-32602` (tests + manual stdio run)
 - [x] well-formed unknown id → `isError: true`
@@ -104,7 +110,7 @@ task1-mcp-server/
 - "Why `MCPError` for format errors and `ToolError` for not-found?"
 - "The SDK already validates arguments. Why the middleware?" (→ it would emit `isError`, not -32602)
 - "What exactly does the SDK do to stdout during serving, and what still leaks?"
-- "`grep` finds `print()` in `core/`. You said stdout is pure JSON-RPC." (→ client process, not the server pipe)
+- "Why is there no client in the repo?" (→ the brief asks for a server; the Inspector and the subprocess test are the client)
 - "Why pin `mcp>=2,<3`? What breaks on v1?"
 - "Where would auth go if this were HTTP instead of stdio?"
 - "How does the client learn the `CUST-XXXXX` constraint before calling?" (→ `inputSchema.pattern`)

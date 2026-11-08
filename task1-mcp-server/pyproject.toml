@@ -1,24 +1,17 @@
 [project]
-name = "app"
+name = "customer-ops-mcp"
 version = "0.1.0"
-description = "Add your description here"
+description = "Stdio MCP server with strict validation for customer lookup and refunds"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "anthropic>=0.51.0,<1",
     "mcp[cli]>=2,<3",
-    "prompt-toolkit>=3.0.51",
-    "python-dotenv>=1.1.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
 ]
-
-[tool.ruff]
-# Starter chat app from the Anthropic course, not part of the graded server.
-extend-exclude = ["core", "main.py"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
