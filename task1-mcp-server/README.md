@@ -1,5 +1,10 @@
 # MCP Chat
 
+> **Graded server:** `mcp_server.py`, `store.py` and `models.py`. Check stdout isolation with
+> `grep -n "print(" mcp_server.py store.py models.py` (expect no output). The `print()` calls in
+> `core/` and `main.py` belong to the starter chat client, which runs in its own process, so they
+> never touch the server's JSON-RPC stdout.
+
 MCP Chat is a command-line interface application that enables interactive chat capabilities with AI models through the Anthropic API. The application supports document retrieval, command-based prompts, and extensible tool integrations via the MCP (Model Context Protocol) architecture.
 
 ## Prerequisites

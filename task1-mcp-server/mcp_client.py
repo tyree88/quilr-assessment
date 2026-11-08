@@ -1,7 +1,8 @@
-import sys
 import asyncio
-from typing import Optional, Any
+import sys
 from contextlib import AsyncExitStack
+from typing import Any
+
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
 
@@ -11,12 +12,12 @@ class MCPClient:
         self,
         command: str,
         args: list[str],
-        env: Optional[dict] = None,
+        env: dict | None = None,
     ):
         self._command = command
         self._args = args
         self._env = env
-        self._session: Optional[ClientSession] = None
+        self._session: ClientSession | None = None
         self._exit_stack: AsyncExitStack = AsyncExitStack()
 
     async def connect(self):
