@@ -33,8 +33,9 @@ class ScriptStream(httpx.AsyncByteStream):
 
     async def __aiter__(self):
         for step in self._steps:
-            if self._delay:
-                await anyio.sleep(self._delay)
+            # Yield to the loop like a socket read does. Without it a delay-0 stream runs in
+            # one task step and the loop never purges cancelled timeout timers (memory grows).
+            await anyio.sleep(self._delay)
             if step is STALL:
                 await anyio.sleep_forever()
             if isinstance(step, Exception):
