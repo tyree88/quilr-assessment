@@ -149,6 +149,7 @@ All fields are strict: a zero, a negative or an unknown field fails at startup.
 - **Reconcile can push a tenant over** if the provider uses more than the estimate. Every request reserves its full `max_tokens`, so this needs a provider that ignores `max_tokens`.
 - **`Retry-After` uses the oldest row.** If that row frees fewer tokens than the next request needs, the client waits again. Upgrade: walk the rows oldest-first until enough expire.
 - **Wall-clock time.** Rows are shared across processes and restarts, so time is `time.time_ns()`, not a monotonic clock. An NTP step backward briefly over-counts, which is the safe direction.
+- **A cancel that lands during `COMMIT` leaves its row.** The commit already happened in aiosqlite's worker thread, but the caller never received the id, so nothing releases it. The `CancelledError` still propagates, and the row expires after one window.
 - **Client disconnect behind uvicorn.** The tests and the probe prove the cancel path in-process: the request is cancelled, the primary is cancelled and the quota is released. Whether uvicorn cancels a handler when a client disconnects was not measured here.
 - **A lock held past `busy_timeout`** returns `500 internal`. A dedicated `503` with `Retry-After` would be friendlier.
 - **Out of scope:** streaming responses (Task 3), per-tenant limits, schema migrations (`CREATE … IF NOT EXISTS` only), and `PRAGMA synchronous=NORMAL` (faster, but can lose the last commits on power loss, which would under-count usage).

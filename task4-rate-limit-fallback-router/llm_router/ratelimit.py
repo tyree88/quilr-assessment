@@ -45,7 +45,10 @@ class SlidingWindowLimiter:
                 await conn.execute("COMMIT")
                 return cur.lastrowid
             except BaseException:  # deny, error or cancel: release the write lock now
-                await conn.execute("ROLLBACK")
+                # A cancel that lands while COMMIT runs in aiosqlite's worker thread arrives
+                # after the commit happened; ROLLBACK would then raise and hide the cancel.
+                if conn.in_transaction:
+                    await conn.execute("ROLLBACK")
                 raise
 
     def _retry_after_s(self, oldest_ts_ms: int, now: int) -> int:

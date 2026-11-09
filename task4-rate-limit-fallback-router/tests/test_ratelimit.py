@@ -131,3 +131,37 @@ async def test_reconcile_rejects_negative_actual(limiter):
     rid = await limiter.reserve("t", 10)
     with pytest.raises(sqlite3.IntegrityError):
         await limiter.reconcile(rid, -1)
+
+
+async def test_cancel_during_commit_propagates_cancel(settings, clock, monkeypatch):
+    import llm_router.ratelimit as rl
+
+    real_connect = rl.connect
+
+    class CancelAfterCommit:
+        """The COMMIT lands in the worker thread, then the cancel reaches the coroutine."""
+
+        def __init__(self, cm):
+            self._cm = cm
+
+        async def __aenter__(self):
+            self._conn = await self._cm.__aenter__()
+            return self
+
+        async def __aexit__(self, *exc):
+            return await self._cm.__aexit__(*exc)
+
+        @property
+        def in_transaction(self):
+            return self._conn.in_transaction
+
+        async def execute(self, sql, *args):
+            cur = await self._conn.execute(sql, *args)
+            if sql == "COMMIT":
+                raise asyncio.CancelledError
+            return cur
+
+    monkeypatch.setattr(rl, "connect", lambda s: CancelAfterCommit(real_connect(s)))
+    with pytest.raises(asyncio.CancelledError):
+        await SlidingWindowLimiter(settings, now_ms=clock).reserve("t", 1_000)
+    assert await rows(settings) == 1  # committed but unowned: expires after one window
