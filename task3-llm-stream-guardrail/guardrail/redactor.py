@@ -22,7 +22,10 @@ def _tail_start(text: str, lo: int) -> int:
 
 
 class StreamRedactor:
-    """Redacts PII in a text stream while holding back at most K characters.
+    """Redacts PII in a text stream, holding back at most K + MAX_MATCH chars (2 x 128).
+
+    The hold limit is at most K back from the end, and a match that ends past the limit is
+    held from its start, which can be up to MAX_MATCH further back.
 
     Invariant: feed() over any chunking of s, then flush(), returns redact(s).
 
