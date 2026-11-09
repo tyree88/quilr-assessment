@@ -137,3 +137,18 @@ async def test_largest_valid_prompt_fits_under_the_cap(settings):
     async with client_for(s, FakeProvider("p")) as c:
         resp = await c.post("/v1/completions", content=body.encode(), headers=KEY)
     assert resp.status_code == 200
+
+
+async def test_reconcile_failure_still_returns_the_result(settings, monkeypatch, caplog):
+    from llm_router.ratelimit import SlidingWindowLimiter
+
+    async def broken(self, reservation_id, actual_tokens):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(SlidingWindowLimiter, "reconcile", broken)
+    with caplog.at_level(logging.ERROR, logger="llm_router"):
+        async with client_for(settings, FakeProvider("p", tokens=42)) as c:
+            resp = await c.post("/v1/completions", json=BODY, headers=KEY)
+    assert resp.status_code == 200 and resp.json()["usage"]["total_tokens"] == 42
+    assert "reconcile failed" in caplog.text
+    assert await window(settings) == [603]  # estimate kept: over-counts, never under

@@ -11,7 +11,7 @@ A model-routing module for an LLM gateway:
 ```bash
 cd task4-rate-limit-fallback-router
 uv sync
-uv run pytest -q                      # 72 tests, RuntimeWarning is an error
+uv run pytest -q                      # 78 tests, RuntimeWarning is an error
 uvx ruff@0.17.4 check .
 uv run python probe.py                # 41 hostile-input rows against the full ASGI app
 uv run python -m llm_router           # gateway on 127.0.0.1:8000 with fake providers
@@ -99,6 +99,8 @@ Each provider call runs under `asyncio.timeout(3.0)`. The deadline covers connec
 | any other exception | propagates to the app → `500 internal` |
 | secondary also fails | `503 upstream_unavailable` |
 
+Other 4xx (400, 401, 403, 404, 422) do **not** fail over, by design: they mean the request, our credentials for that provider, or the route is wrong, and sending the same request to the secondary would at best hide a misconfiguration. They return `400 invalid_request` and the real status is in the log.
+
 The fallback rule is **fixed, not configurable**: 429, timeout, 5xx and connection errors all mean "this provider cannot serve now". The provider's own `Retry-After` is **not parsed**. A 429 fails over immediately and never reaches the client, so there is nothing to mis-parse. The probe sends none, `120`, an HTTP-date, 40 digits and garbage.
 
 The secondary shares the tenant's budget, because the budget belongs to the tenant, not the provider.
@@ -139,7 +141,7 @@ All fields are strict: a zero, a negative or an unknown field fails at startup.
 
 ## Verification
 
-- **`uv run pytest -q`: 72 passed.** Covered: the window slide (0 s / 30 s / 59 s / 61 s); the exact limit and limit+1; the half-open edge; `Retry-After` rounding; idle-tenant eviction; the **25/25 race**; reconcile and release; failover per status; the 2.9–3.3 s timing with the primary cancelled and no task left over; outside cancel; an end-to-end leak check (hostname and traceback absent from the body, present in the log under the same `request_id`); client cancel releasing quota.
+- **`uv run pytest -q`: 78 passed.** Covered: the window slide (0 s / 30 s / 59 s / 61 s); the exact limit and limit+1; the half-open edge; `Retry-After` rounding; idle-tenant eviction; the **25/25 race**; reconcile and release; failover per status; the 2.9–3.3 s timing with the primary cancelled and no task left over; outside cancel; an end-to-end leak check (hostname and traceback absent from the body, present in the log under the same `request_id`); client cancel releasing quota.
 - **`uv run python probe.py`: 41/41 PASS.** It also runs a second **process** that holds the SQLite write lock, both within and past `busy_timeout`.
 - **Mutation checks:** every guard was broken once to watch its test fail. That includes STRICT, WAL, eviction `<=`, the limit comparison, per-tenant-only eviction, no-op reconcile/release, each failover status, removing the timeout, swallowing an outside cancel, the release on cancel, the catch-all, the blank-key check and the 404 handler.
 
@@ -151,6 +153,7 @@ All fields are strict: a zero, a negative or an unknown field fails at startup.
 - **Wall-clock time.** Rows are shared across processes and restarts, so time is `time.time_ns()`, not a monotonic clock. An NTP step backward briefly over-counts, which is the safe direction.
 - **A cancel that lands during `COMMIT` leaves its row.** The commit already happened in aiosqlite's worker thread, but the caller never received the id, so nothing releases it. The `CancelledError` still propagates, and the row expires after one window.
 - **Client disconnect behind uvicorn.** The tests and the probe prove the cancel path in-process: the request is cancelled, the primary is cancelled and the quota is released. Whether uvicorn cancels a handler when a client disconnects was not measured here.
+- **If reconcile fails after a successful call,** the response is still returned and the row keeps its estimate (logged). That over-counts, which is the safe direction.
 - **A lock held past `busy_timeout`** returns `500 internal`. A dedicated `503` with `Retry-After` would be friendlier.
 - **Out of scope:** streaming responses (Task 3), per-tenant limits, schema migrations (`CREATE … IF NOT EXISTS` only), and `PRAGMA synchronous=NORMAL` (faster, but can lose the last commits on power loss, which would under-count usage).
 - The lifespan hook creates the schema. `httpx.ASGITransport` doesn't run lifespan, so the tests call `init_db()` themselves.

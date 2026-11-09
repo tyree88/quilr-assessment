@@ -79,7 +79,12 @@ def create_app(
             # even if this task is cancelled again while it runs.
             await asyncio.shield(limiter.release(reservation))
             raise
-        await limiter.reconcile(reservation, result.total_tokens)
+        try:
+            await limiter.reconcile(reservation, result.total_tokens)
+        except Exception:
+            # The tokens are already spent; failing the request now would waste them. The row
+            # keeps its (worst-case) estimate, which over-counts: the safe direction.
+            log.exception("request_id=%s reconcile failed, estimate kept", request_id)
         body = CompletionResponse(
             text=result.text, provider=role, usage=Usage(total_tokens=result.total_tokens)
         )
