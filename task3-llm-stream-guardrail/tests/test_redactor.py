@@ -15,6 +15,8 @@ SAMPLES = [
     "no pii here at all, just a long sentence that goes on " * 6,
     "x" * 300 + "joe@example.org" + "y" * 300,
     "4111111111111111@example.com",
+    "Visa 4111 1111 1111 1111 12/27 and card 4111 1111 1111 1111 123 (CVV)",
+    "qty 2 4111 1111 1111 1111, 4111111111111111 12 left, order 4111111111111112",
     "\uff11\uff12\uff13-\uff14\uff15-\uff16\uff17\uff18\uff19 fullwidth",
 ]
 
@@ -111,3 +113,13 @@ def test_fuzz_invariance_on_pii_dense_text():
         s = "".join(rng.choice(parts) for _ in range(rng.randint(1, 80)))
         for chunks in splits(s, rng):
             assert run(chunks) == redact(s), s
+
+
+@pytest.mark.parametrize("s, out", [
+    ("Visa 4111 1111 1111 1111 12/27", "Visa [REDACTED] 12/27"),
+    ("qty 2 4111 1111 1111 1111", "qty 2 [REDACTED]"),
+])
+def test_card_next_to_a_number_redacted_at_every_split(s, out):
+    for i in range(len(s) + 1):
+        for j in range(i, len(s) + 1, 2):
+            assert run([s[:i], s[i:j], s[j:]]) == out, (i, j)

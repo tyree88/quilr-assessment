@@ -101,6 +101,13 @@ def test_luhn(number, ok):
     ),
     ("id 123-45-6789-0123 end", "id [REDACTED]-0123 end"),  # SSN alternative wins at its start
     ("ref 4111 123-45-6789 end", "ref 4111 [REDACTED] end"),  # failed card holds an SSN
+    ("Visa 4111 1111 1111 1111 12/27", "Visa [REDACTED] 12/27"),  # expiry glued on
+    ("card 4111 1111 1111 1111 123 (CVV)", "card [REDACTED] 123 (CVV)"),
+    ("qty 2 4111 1111 1111 1111", "qty 2 [REDACTED]"),  # number in front
+    ("4111111111111111 12 left", "[REDACTED] 12 left"),
+    ("order 4111111111111112 ok", "order 4111111111111112 ok"),  # 16 digits, fails Luhn
+    ("ref 0479666972510273", "ref 0479666972510273"),  # fails Luhn; its 14-digit head passes
+    ("order 1234 5678 9012 3456 ok", "order 1234 5678 9012 3456 ok"),  # no window passes
     ("4111111111111111@example.com", "[REDACTED]"),  # email wins at the same start
     ("call 512-555-0199", "call 512-555-0199"),  # phone untouched
     ("john\u200b@exa\u00admple.com", "[REDACTED]"),  # invisible chars stripped first

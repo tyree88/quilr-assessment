@@ -47,10 +47,34 @@ def strip_invisible(text: str) -> str:
     return text.translate(_INVISIBLE)
 
 
+def _redact_card_windows(span: str) -> str:
+    """A card-shaped span that fails Luhn as a whole: CARD is greedy, so a valid card can sit
+    inside it next to another number ("4111 1111 1111 1111 12/27", "qty 2 4111 ...").
+    Redact every 13-19 digit window that starts and ends on a digit-group edge and passes
+    Luhn (longest first, left to right). Windows only on group edges keep the Luhn control:
+    an unseparated 16-digit number has one window, itself. SSNs in what is left still go.
+    """
+    starts = [i for i, c in enumerate(span) if c.isdecimal() and (i == 0 or not span[i - 1].isdecimal())]
+    ends = [i + 1 for i, c in enumerate(span)
+            if c.isdecimal() and (i + 1 == len(span) or not span[i + 1].isdecimal())]
+    out, last = "", 0
+    for a in starts:
+        if a < last:
+            continue
+        for b in reversed(ends):
+            if b <= a:
+                break
+            if 13 <= sum(c.isdecimal() for c in span[a:b]) <= 19 and luhn_ok(span[a:b]):
+                out += span[last:a] + REDACTED  # <= 6 digits before a window: no SSN fits
+                last = b
+                break
+    return out + SSN.sub(REDACTED, span[last:])
+
+
 def replacement(m: re.Match[str]) -> str:
     """What a committed PII_RE match becomes. Shared by redact() and StreamRedactor."""
     if m.lastgroup == "card" and not luhn_ok(m.group()):
-        return SSN.sub(REDACTED, m.group())  # a card that fails Luhn can still hold an SSN
+        return _redact_card_windows(m.group())
     return REDACTED
 
 
