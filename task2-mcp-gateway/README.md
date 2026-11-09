@@ -29,6 +29,7 @@ A viewer calling an admin tool is stopped at the gateway:
 
 ```bash
 curl -s localhost:8000/mcp -H 'Authorization: Bearer tok_viewer_demo' \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"admin_reset_key"}}'
 # {"jsonrpc":"2.0","id":1,"error":{"code":-32001,"message":"Unauthorized Tool Call"}}
 ```
@@ -125,6 +126,12 @@ Sources: [JSON-RPC 2.0](https://www.jsonrpc.org/specification);
 - **No request body size cap.** Starlette reads the whole body; add a limit at the edge.
 - **SSE is buffered, not streamed.** A `text/event-stream` answer passes through only once it
   is complete, so progress events arrive late. The upgrade is a `StreamingResponse` pass-through.
+- **The deadline covers the whole buffered answer.** A tool call (including a long SSE stream)
+  that runs longer than `GATEWAY_TIMEOUT_S` gets a 504, even if the downstream is still working.
+- **Client JSON-RPC responses are rejected with `-32600`.** A body such as
+  `{"jsonrpc":"2.0","id":1,"result":{}}` has no `method`. MCP 2026-07-28 forbids clients from
+  POSTing responses, but a 2025-11-25 client answering a server request (sampling, elicitation)
+  would be refused. Forwarding responses unchanged is the upgrade.
 - **POST only.** `GET /mcp` (a server-to-client stream) returns 405.
 - **An invisible character inside the method** (`tools/​call`) skips the policy. The
   downstream then sees an unknown method; rejecting it would need a method-level rule.
@@ -138,6 +145,10 @@ Sources: [JSON-RPC 2.0](https://www.jsonrpc.org/specification);
 - **Allow-list per role instead of an `admin_` deny-prefix.** The prefix check normalizes (NFKC +
   casefold) and rejects invisible characters, but it can't catch confusables such as Cyrillic `а`.
   A per-role allow-list closes that class of bypass entirely.
+  The invisible-character check also covers only category Cf: a combining mark such as U+034F
+  (category Mn) inside `admin_` passes as a non-admin name. That is a bypass only if the
+  downstream strips default-ignorable characters before looking up the tool; the allow-list
+  closes it too.
 - **Check `Mcp-Method` / `Mcp-Name` headers against the body.** MCP 2026-07-28 requires a server to
   reject a mismatch with HTTP 400 + `-32020`, so a component routing on the header and one
   executing the body cannot disagree. The gateway authorizes on the body and forwards the headers
