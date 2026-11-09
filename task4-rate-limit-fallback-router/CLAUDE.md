@@ -51,7 +51,7 @@ Root `CLAUDE.md` rules apply. This file adds task context.
 
 ```
 task4-rate-limit-fallback-router/
-├── pyproject.toml                 starlette · uvicorn · httpx · aiosqlite · pydantic · pytest · pytest-asyncio
+├── pyproject.toml                 starlette · uvicorn · httpx · aiosqlite · pydantic · pytest · anyio plugin (no pytest-asyncio)
 ├── src/llm_router/
 │   ├── db.py                      open_db(path) -> aiosqlite.Connection (WAL, busy_timeout, schema, index)
 │   ├── schema.sql                 CREATE TABLE usage(id INTEGER PK, tenant TEXT, ts_ms INTEGER, tokens INTEGER); INDEX (tenant, ts_ms)
@@ -80,7 +80,7 @@ task4-rate-limit-fallback-router/
 4. Fallback on 5xx? → Configurable, default **on**. Brief names 429+timeout; 5xx is defensible either way.
 5. Fallback on primary **4xx other than 429** (400 bad request)? → **No.** Request is wrong; secondary won't fix it. Return `invalid_request`.
 6. `Retry-After` on our own 429 → compute from oldest row in window: `(oldest_ts + 60s − now)`. Cheap, correct, impressive.
-7. One `aiosqlite` connection shared, or pool? → One connection + `asyncio.Lock` around write tx **or** `BEGIN IMMEDIATE` + `busy_timeout`. Recommended: `BEGIN IMMEDIATE` + busy_timeout, no app-level lock → proves we understand SQLite locking. Document why.
+7. One `aiosqlite` connection shared, or pool? → **Decided: short-lived connection per `reserve()`** + `BEGIN IMMEDIATE` + `busy_timeout`, no app-level lock. A shared aiosqlite connection is one `sqlite3` connection = one transaction for every coroutine, so `BEGIN IMMEDIATE` on it isolates nothing (second `BEGIN` → "cannot start a transaction within a transaction"). SQLite's write lock is per connection, so per-call connections make it the one guard, across processes too. See `PLAN.md` decision 1.
 8. Streaming responses? → **Out of scope.** Say so in README; Task 3 covers streaming.
 
 ## Reserve-then-reconcile transaction (pair-build first; it is the heart of the grade)
