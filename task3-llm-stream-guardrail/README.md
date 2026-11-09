@@ -124,9 +124,10 @@ Response headers: `text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffe
 - **Email caps leak.** A local part over 64 chars leaks its head; a domain part over 48 chars
   or a TLD over 14 letters is not matched and leaks whole (from 58 chars up, well under K).
   Raising the caps raises K; the cost is TTFT only while the tail still looks like PII.
-- **Pattern coverage.** SSNs without dashes and cards with double spaces are not matched;
-  internationalized emails are not matched. Upgrade: normalize whitespace before matching,
-  add patterns per tenant.
+- **Pattern coverage.** Not matched: SSNs without dashes or separated by spaces
+  (`123 45 6789`); cards with double spaces, or separated by non-breaking spaces (U+00A0) or
+  dots (`4111.1111.1111.1111`); internationalized emails. Upgrade: normalize separators
+  before matching, add patterns per tenant.
 - **Zero-width joiner** (U+200D) is kept because emoji need it, so `john\u200d@x.com` is not
   joined back together.
 - **Only `choices[0].delta.content` is redacted.** Tool-call arguments and `refusal` text pass
