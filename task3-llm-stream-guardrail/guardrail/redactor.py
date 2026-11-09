@@ -1,4 +1,24 @@
+import string
+
 from guardrail.patterns import MAX_MATCH, PII_RE, replacement, strip_invisible
+
+# Chars a still-growing match can end with: email/SSN/unspaced card (no space), spaced card.
+_NO_SPACE = frozenset(string.ascii_letters + string.digits + "._%+@-")
+_CARD_RUN = frozenset(" -")
+
+
+def _tail_start(text: str, lo: int) -> int:
+    """Start of the shortest suffix that could still be part of a growing match.
+
+    A match not yet complete must reach the end of text through chars of one class, so a
+    char outside both classes ends any hope of one; text before it is safe to emit.
+    """
+    a = b = len(text)
+    while a > lo and (text[a - 1] in _NO_SPACE or text[a - 1].isdecimal()):
+        a -= 1
+    while b > lo and (text[b - 1] in _CARD_RUN or text[b - 1].isdecimal()):
+        b -= 1
+    return min(a, b)
 
 
 class StreamRedactor:
@@ -28,7 +48,10 @@ class StreamRedactor:
     def _drain(self, final: bool) -> str:
         text = self._ctx + self._buf
         start = len(self._ctx)
-        limit = len(text) if final else len(text) - self._k
+        if final:
+            limit = len(text)
+        else:  # hold at most K, and only the tail that could still be PII (TTFT on prose)
+            limit = _tail_start(text, max(start, len(text) - self._k))
         out, pos = "", start
         cut = max(limit, start)
         for m in PII_RE.finditer(text, start):  # pos= keeps the context char visible

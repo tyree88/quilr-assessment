@@ -88,6 +88,21 @@ def test_context_char_keeps_digit_lookbehind_across_the_hold_point():
         assert run([s[:i], s[i:]]) == redact(s), i
 
 
+def test_prose_is_held_only_back_to_the_last_word():
+    r = StreamRedactor()
+    assert r.feed("The quick brown fox jumps") == "The quick brown fox "
+    assert r.feed(" over") == "jumps "
+    assert r.held == len("over")
+
+
+def test_possible_pii_tail_is_held():
+    r = StreamRedactor()
+    assert r.feed("mail john@exa") == "mail "
+    assert r.feed("mple.com now") == "[REDACTED] "
+    assert r.feed(" card 4111 1111 ") == "now card"  # the spaced-card run stays held
+    assert r.flush() == " 4111 1111 "
+
+
 def test_fuzz_invariance_on_pii_dense_text():
     rng = random.Random(7)
     parts = ["john", "@", "example", ".", "com", "123", "-", "45", "6789", "4111", " ", "1111",
