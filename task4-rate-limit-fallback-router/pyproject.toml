@@ -1,0 +1,23 @@
+[project]
+name = "llm-router"
+version = "0.1.0"
+description = "Token-aware rate limiter and model fallback router (Task 4)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aiosqlite>=0.22.1,<0.23",
+    "httpx>=0.28.1,<0.29",
+    "pydantic>=2.14.3,<3",
+    "starlette>=1.10.0,<2",
+    "uvicorn>=0.34.2,<0.35",
+]
+
+[dependency-groups]
+dev = [
+    "anyio>=4.16.0,<5",
+    "pytest>=9.2.0,<10",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = ["error::RuntimeWarning"]

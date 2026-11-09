@@ -51,7 +51,7 @@ Root `CLAUDE.md` rules apply. This file adds task context.
 
 ```
 task4-rate-limit-fallback-router/
-├── pyproject.toml                 starlette · uvicorn · httpx · aiosqlite · pydantic · pytest · pytest-asyncio
+├── pyproject.toml                 starlette · uvicorn · httpx · aiosqlite · pydantic · pytest · anyio plugin (no pytest-asyncio)
 ├── src/llm_router/
 │   ├── db.py                      open_db(path) -> aiosqlite.Connection (WAL, busy_timeout, schema, index)
 │   ├── schema.sql                 CREATE TABLE usage(id INTEGER PK, tenant TEXT, ts_ms INTEGER, tokens INTEGER); INDEX (tenant, ts_ms)
@@ -61,7 +61,7 @@ task4-rate-limit-fallback-router/
 │   ├── errors.py                  GatewayError(type, status, message) + enum + to_response(request_id); sanitize(exc) -> GatewayError
 │   ├── models.py                  CompletionRequest (Pydantic, extra=forbid) · CompletionResponse
 │   ├── app.py                     POST /v1/completions · header X-API-Key → tenant · request_id middleware · exception handlers
-│   └── config.py                  LIMIT_TOKENS=50_000, WINDOW_S=60, PRIMARY_TIMEOUT_S=3.0, SECONDARY_TIMEOUT_S, DB_PATH, FALLBACK_ON_5XX
+│   └── config.py                  Settings: limit_tokens=50_000, window_ms=60_000, upstream_timeout_s=3.0 (each provider), busy_timeout_ms, db_path
 └── tests/
     ├── test_ratelimit_window.py   fill to 49k → allow 1k → deny 1 → advance clock 61s → allow; eviction row count
     ├── test_ratelimit_concurrency.py  50 coroutines × 2k tokens, limit 50k → exactly 25 pass (asyncio.gather) — THE race test
@@ -77,10 +77,10 @@ task4-rate-limit-fallback-router/
 1. Clock source: `time.time()` or injectable `Clock` protocol? → **Injectable.** Window tests need to advance time without `sleep`.
 2. Reservation on failure: if both providers fail, do we **release** the reservation? → Yes, `DELETE WHERE id=?` in a `finally`. Interview line: "failed calls don't burn quota."
 3. Does the secondary provider share the tenant's budget? → Yes. Budget is per tenant, not per provider.
-4. Fallback on 5xx? → Configurable, default **on**. Brief names 429+timeout; 5xx is defensible either way.
+4. Fallback on 5xx? → **Decided: always** (fixed, not configurable). 429, timeout, 5xx and connection errors all mean "this provider cannot serve now".
 5. Fallback on primary **4xx other than 429** (400 bad request)? → **No.** Request is wrong; secondary won't fix it. Return `invalid_request`.
 6. `Retry-After` on our own 429 → compute from oldest row in window: `(oldest_ts + 60s − now)`. Cheap, correct, impressive.
-7. One `aiosqlite` connection shared, or pool? → One connection + `asyncio.Lock` around write tx **or** `BEGIN IMMEDIATE` + `busy_timeout`. Recommended: `BEGIN IMMEDIATE` + busy_timeout, no app-level lock → proves we understand SQLite locking. Document why.
+7. One `aiosqlite` connection shared, or pool? → **Decided: short-lived connection per `reserve()`** + `BEGIN IMMEDIATE` + `busy_timeout`, no app-level lock. A shared aiosqlite connection is one `sqlite3` connection = one transaction for every coroutine, so `BEGIN IMMEDIATE` on it isolates nothing (second `BEGIN` → "cannot start a transaction within a transaction"). SQLite's write lock is per connection, so per-call connections make it the one guard, across processes too. See `README.md` → Design and Decisions.
 8. Streaming responses? → **Out of scope.** Say so in README; Task 3 covers streaming.
 
 ## Reserve-then-reconcile transaction (pair-build first; it is the heart of the grade)
