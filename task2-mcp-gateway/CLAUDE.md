@@ -1,9 +1,9 @@
-# Task 2 — MCP Security Gateway Proxy (tool filtering + auth)
+# Task 2 — MCP Security Gateway
 
-Root `CLAUDE.md` rules apply. This file adds task context.
-**Format: take-home.** More room for tests and a README than Task 1 — use it.
+Guidance for working in this folder. The README is the reviewer-facing document; this file
+records the task, the layout, the commands and the conventions the code follows.
 
-## Task statement (verbatim from assessment)
+## Task statement
 
 > Build a lightweight HTTP/JSON-RPC reverse proxy (in Node.js or Python) that acts as an MCP Gateway sitting between an AI agent client and a downstream mock MCP server.
 >
@@ -18,102 +18,65 @@ Root `CLAUDE.md` rules apply. This file adds task context.
 > - Proxy middleware construction and HTTP request/response forwarding.
 > - Fine-grained, method-level authorization logic and clean error handling.
 
-## Design decisions (settled unless rubric says otherwise)
+## Layout
 
-| Decision | Choice | Why |
+| Path | Job |
+|---|---|
+| `mcp_gateway/app.py` | `create_app()` and the `app_from_env()` uvicorn factory; the one `POST /mcp` route |
+| `mcp_gateway/auth.py` | `extract_bearer` (RFC 6750 grammar), `resolve_role` (static token map) |
+| `mcp_gateway/jsonrpc.py` | `JsonRpcRequest` (strict Pydantic envelope), `parse_request(bytes)` |
+| `mcp_gateway/policy.py` | `authorize(role, request)` → `allow` / `deny` / `invalid_params` |
+| `mcp_gateway/forward.py` | `forward()`: header allowlist, deadline, pass-through or sanitized error |
+| `mcp_gateway/errors.py` | Error-code constants and `make_error()`, the only error builder |
+| `mock_downstream/app.py` | Mock MCP server with `calls` / `completed` counters; tests and probe only |
+| `tests/` | Unit tests per module plus `test_app.py`, end to end over `httpx.ASGITransport` |
+| `probe.py` | Hostile-input probe against the gateway and mock under real uvicorn |
+
+## Commands
+
+```bash
+uv sync --locked
+uv run pytest -q
+uvx ruff@0.17.4 check .          # same version CI runs
+uv run python probe.py           # needs local port binding
+```
+
+Run the servers: see the README.
+
+## Pipeline
+
+`POST /mcp` runs, in this order: authenticate → parse → authorize → forward.
+Authentication comes first so anonymous callers learn nothing about the parser; authorization
+comes before any network I/O so a denied call never reaches the downstream.
+
+## Error codes
+
+| Situation | HTTP | Code |
 |---|---|---|
-| Framework | Starlette raw `Request`/`Response`, no FastAPI | Rubric scores *parsing JSON-RPC wire format*. FastAPI's body models would hide that work. We parse the envelope ourselves with Pydantic. |
-| Token → role | Static map in `tokens.py` (`{"tok_admin_...": "admin", "tok_viewer_...": "viewer"}`) loaded from env/JSON | Rubric says *extract the role*, not *implement OAuth*. Mark `# ponytail: ceiling=static map, upgrade=JWT verify w/ JWKS`. |
-| Downstream | Our own mock: tiny Starlette app answering `tools/list` + `tools/call` over Streamable HTTP-shaped JSON-RPC | Self-contained, testable in-process, reviewer runs one command |
-| Forwarding | `httpx.AsyncClient` with explicit timeout, pass through status code + body + `Content-Type`; strip hop-by-hop headers | Rubric: *HTTP request/response forwarding* |
-| Batch requests | Reject with `-32600` unless we deliberately support them | MCP spec removed JSON-RPC batching (2025-06-18+). One line in README. |
-| Unknown method | Forward transparently | Gateway is allow-by-default on methods, deny-by-rule on `tools/call` names |
+| Missing / malformed / unknown Bearer token | 401 + `WWW-Authenticate: Bearer` | `-32001` "Unauthorized", `id: null` |
+| Body not JSON | 200 | `-32700` |
+| Not one valid JSON-RPC request (batch, scalar, repeated key, bad envelope) | 200 | `-32600` |
+| `tools/call` name missing, not a string, or holding a Cf character | 200 | `-32602` |
+| Non-admin calls `admin_*` | 200 | `-32001` "Unauthorized Tool Call" |
+| Denied or invalid notification | 403 / 400 | no body |
+| Downstream unreachable / timeout / non-JSON-RPC answer | 502 / 504 / 502 | `-32603`, `data.reason` |
+| Downstream JSON-RPC answer | passed through | unchanged |
 
-## Docs to pull on entry
+## Conventions
 
-1. **JSON-RPC 2.0 spec** — request object, error object, reserved codes `-32700..-32603`, server-defined range `-32000..-32099`
-2. **MCP spec**: `tools/list`, `tools/call` params shape (`name`, `arguments`), Streamable HTTP transport (POST JSON body, `Mcp-Session-Id`, `Accept`)
-3. **MCP authorization spec** — how Bearer tokens are expected on HTTP transport; what a 401 vs a JSON-RPC error means
-4. `httpx` AsyncClient: `timeout`, `app=`/`ASGITransport` for tests, header forwarding
-5. Starlette: `Request.body()`, `Response(content, status_code, media_type)`
-
-## Error code map (we own this — put it in `errors.py` and the README)
-
-| Situation | Transport | Code | Message |
-|---|---|---|---|
-| Missing/malformed `Authorization` header | HTTP **401** + JSON-RPC error body | `-32001` | `Unauthorized Tool Call` *or* `Unauthorized` — **grill this** |
-| Unknown token | HTTP 401 | `-32001` | |
-| Body not JSON | HTTP 200 (JSON-RPC convention) | `-32700` | `Parse error` |
-| Not a JSON-RPC 2.0 request object | 200 | `-32600` | `Invalid Request` |
-| `tools/call` missing `params.name` | 200 | `-32602` | `Invalid params` |
-| Viewer calls `admin_*` | 200 | **`-32001`** | **`Unauthorized Tool Call`** (rubric literal) |
-| Downstream unreachable / timeout | 200 | `-32000` or `-32603` | `Upstream unavailable` — **never** the httpx message |
-
-## The design tensions you must grill me on (in this order)
-
-1. **No/invalid Bearer token: 401 only, or 401 + JSON-RPC error body?**
-   Recommended: **both**. HTTP 401 for HTTP-native clients, JSON-RPC `-32001` body for MCP clients. Rubric line: *clean error handling*.
-2. **Does `tools/list` get filtered too?** Rubric says forward *transparently*. Recommended: **forward unfiltered as written, but add a `--filter-list` flag** that strips `admin_*` for viewers, off by default. One extra function, strong interview talking point ("least privilege says yes; brief says no; I made it a switch").
-3. **Where does the `id` in our intercepted error come from?** Must echo the request `id`. If the request `id` is unparseable → `null`. Rubric: *parsing wire format correctly*.
-4. **Notifications** (no `id`): forward, never respond with a body. Make sure we don't fabricate an error response to a notification.
-5. **Session header passthrough**: `Mcp-Session-Id` round-trips unchanged. Yes.
-
-## Proposed module layout (names only)
-
-```
-task2-mcp-gateway/
-├── pyproject.toml                 starlette · uvicorn · httpx · pydantic · pytest · pytest-asyncio
-├── src/mcp_gateway/
-│   ├── jsonrpc.py                 JsonRpcRequest / JsonRpcError / JsonRpcErrorResponse (Pydantic, extra=forbid where safe) · parse_request(bytes) -> Request | Error
-│   ├── auth.py                    extract_bearer(headers) -> str | None · resolve_role(token) -> Role | None
-│   ├── policy.py                  is_admin_tool(name) · authorize(role, method, params) -> Decision
-│   ├── forward.py                 forward(req: Request, body: bytes) -> Response  (httpx, timeout, header filtering)
-│   ├── app.py                     Starlette app: single POST /mcp route; the only place the pipeline is wired
-│   ├── errors.py                  code constants + make_error(id, code, msg) -> JSONResponse
-│   └── config.py                  DOWNSTREAM_URL, TOKEN_MAP_PATH, TIMEOUT_S
-├── mock_downstream/
-│   └── app.py                     tools/list → [get_customer, admin_reset_key]; tools/call → echoes
-└── tests/
-    ├── test_jsonrpc_parse.py      parse error, invalid request, missing params.name, batch rejection, notification
-    ├── test_auth_policy.py        viewer+admin_ → -32001; admin+admin_ → forward; viewer+plain → forward; no header → 401
-    ├── test_forward.py            downstream 500 → sanitized; timeout → sanitized; headers stripped; session id passes
-    └── test_e2e.py                gateway ↔ mock downstream in-process via ASGITransport
-```
-
-## Pipeline order (this IS the middleware design — defend it)
-
-```
-POST /mcp
-  1. extract_bearer → none/unknown → 401 + -32001          (fail fast, cheapest check first)
-  2. parse_request  → -32700 / -32600 / -32602             (never forward garbage)
-  3. authorize(role, method, params.name) → DENY → -32001  (before any network I/O)
-  4. forward → sanitize upstream failures → -32000/-32603
-  5. passthrough status, body, Content-Type, Mcp-Session-Id
-```
-
-Interview line: *"Auth before parse would leak parse errors to anonymous callers. Parse before authorize because policy needs `params.name`. Authorize before forward so a denied call never touches downstream."*
-
-## Pressure Test Checklist
-
-- [ ] `curl` with no header → 401, body `{"jsonrpc":"2.0","id":null,"error":{"code":-32001,...}}`
-- [ ] viewer token + `tools/call admin_reset_key` → **downstream receives nothing** (assert mock call counter == 0)
-- [ ] admin token + same call → forwarded, downstream response returned byte-identical
-- [ ] viewer + `tools/call get_customer` → forwarded
-- [ ] viewer + `tools/list` → forwarded, response unmodified (unless `--filter-list`)
-- [ ] `params.name = "Admin_reset"` (capital A) → **grill**: case-sensitive match or not? Default: exact prefix, documented.
-- [ ] `params.name = "admin_"` (just the prefix) → denied for viewer
-- [ ] body `[{...},{...}]` (batch) → `-32600`
-- [ ] body `{"jsonrpc":"1.0",...}` → `-32600`
-- [ ] notification (no `id`) → forwarded, gateway returns 202/empty, no fabricated error
-- [ ] downstream down → `-32000 Upstream unavailable`, no `httpx.ConnectError` text in body, no hostname
-- [ ] downstream slow > timeout → same sanitized error, request actually cancelled
-- [ ] `Connection`, `Transfer-Encoding`, `Host`, `Content-Length` are **not** forwarded verbatim
-- [ ] `ruff check .` clean; `pytest -q` green; README has the error-code table
-
-## Interview questions you will drill me on
-
-- "Why `-32001`? Where does the server-defined range start and end?"
-- "Why intercept at the gateway instead of letting downstream enforce auth?" (defense in depth; downstream may be third-party)
-- "What stops a viewer from calling `tools/call` with `name: 'admin_reset_key'` but a different casing or unicode lookalike?" (normalize, exact match, deny-list is the weakness → allow-list is the upgrade)
-- "How would you replace the static token map?" (JWT + JWKS, role claim, `aud` check)
-- "What happens to streaming (SSE) responses from downstream?" (ponytail: buffered now; `StreamingResponse` passthrough is the upgrade — say so in README)
+- **Target spec:** MCP 2026-07-28. `-32001` comes from the task statement even though MCP marks
+  `-32000..-32019` as legacy; do not add other codes from that range.
+- **Validation lives at the boundaries:** `parse_request` for the body, `extract_bearer` for the
+  header, `forward` for the upstream answer. Keep it there rather than adding checks elsewhere.
+- **The `admin_` rule lives only in `policy.py`** (NFKC + casefold, Cf characters rejected).
+  Never add a second `startswith("admin_")` anywhere.
+- **No caller or upstream text in errors.** Messages are constants; `data.reason` is a fixed word.
+- **Never forward `Authorization` downstream.** Headers go through the allowlist in `forward.py`.
+- **Deadlines use `anyio.fail_after`.** `httpx.ASGITransport` does not enforce httpx timeouts.
+- **Tests:** the anyio pytest plugin (`pytestmark = pytest.mark.anyio`), no pytest-asyncio.
+  `ASGITransport` does not run lifespan, so tests enter `app.router.lifespan_context(app)`.
+  Write invisible characters in source as `\u` escapes.
+- **Dependencies:** exact pins in `pyproject.toml` and a committed `uv.lock`; CI runs
+  `uv sync --locked` on Python 3.12.
+- **Shortcuts** are marked in the code with `# shortcut: <limit>, <upgrade>` and listed in the
+  README under Known limits.
