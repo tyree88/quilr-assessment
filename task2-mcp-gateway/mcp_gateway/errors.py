@@ -8,7 +8,6 @@ INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 # The task brief requires -32001. MCP 2026-07-28 marks -32000..-32019 as legacy; see README.
 UNAUTHORIZED = -32001
-HEADER_MISMATCH = -32020
 
 RequestId = int | str | None
 

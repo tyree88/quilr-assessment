@@ -11,9 +11,8 @@ client ──POST /mcp──▶ gateway ──▶ downstream MCP server
                         │
    1. Bearer token → role         (none/unknown → 401)
    2. Parse JSON-RPC envelope     (-32700 / -32600)
-   3. Header/body consistency     (Mcp-Name mismatch → 400 + -32020)
-   4. Authorize tools/call        (viewer + admin_* → -32001, downstream untouched)
-   5. Forward, sanitize failures, pass the response through
+   3. Authorize tools/call        (viewer + admin_* → -32001, downstream untouched)
+   4. Forward, sanitize failures, pass the response through
 ```
 
 ## Target spec
@@ -30,7 +29,6 @@ MCP **2026-07-28** (Streamable HTTP), compatible with 2025-11-25 clients.
 | Body not JSON | 200 | `-32700` | Parse error |
 | Not a JSON-RPC 2.0 request / batch | 200 | `-32600` | Invalid Request |
 | `tools/call` with `params.name` missing, not a string, or containing invisible (Cf) characters | 200 | `-32602` | Invalid params |
-| `Mcp-Name` header ≠ `params.name` | 400 | `-32020` | Header mismatch |
 | Viewer calls `admin_*` | 200 | `-32001` | Unauthorized Tool Call |
 | Viewer sends `admin_*` as a notification (no `id`) | 403 | — | no body (spec: no response to notifications) |
 | Downstream unreachable | 502 | `-32603` | Upstream unavailable (`data.reason: unreachable`) |
@@ -46,6 +44,10 @@ MCP **2026-07-28** (Streamable HTTP), compatible with 2025-11-25 clients.
 - **Allow-list per role instead of an `admin_` deny-prefix.** The prefix check normalizes (NFKC +
   casefold) and rejects invisible characters, but it can't catch confusables such as Cyrillic `а`.
   A per-role allow-list closes that class of bypass entirely.
+- **Check `Mcp-Method` / `Mcp-Name` headers against the body.** MCP 2026-07-28 requires a server to
+  reject a mismatch with HTTP 400 + `-32020`, so a component routing on the header and one
+  executing the body cannot disagree. The gateway authorizes on the body and forwards the headers
+  unchanged; a 2026-07-28 downstream still enforces the check itself.
 
 ## Run (once built)
 
