@@ -10,8 +10,6 @@ class Settings(BaseModel):
 
     limit_tokens: PositiveInt = 50_000      # per tenant per window
     window_ms: PositiveInt = 60_000         # integer ms, same unit as DB rows
-    primary_timeout_s: PositiveFloat = 3.0  # brief: "times out after 3000ms"
-    secondary_timeout_s: PositiveFloat = 3.0
+    upstream_timeout_s: PositiveFloat = 3.0  # brief: "times out after 3000ms"; per provider
     busy_timeout_ms: PositiveInt = 5_000    # SQLite waits this long for the write lock
     db_path: Path = Path("gateway.db")      # on disk, per brief
-    fallback_on_5xx: bool = True            # decision 5

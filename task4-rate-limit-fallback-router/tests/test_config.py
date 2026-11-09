@@ -6,7 +6,7 @@ from llm_router.config import Settings
 
 def test_defaults_match_brief():
     s = Settings()
-    assert (s.limit_tokens, s.window_ms, s.primary_timeout_s) == (50_000, 60_000, 3.0)
+    assert (s.limit_tokens, s.window_ms, s.upstream_timeout_s) == (50_000, 60_000, 3.0)
 
 
 @pytest.mark.parametrize("field", ["limit_tokens", "window_ms", "busy_timeout_ms"])

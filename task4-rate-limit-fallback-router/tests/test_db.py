@@ -20,7 +20,10 @@ async def test_file_on_disk_in_wal_mode(settings):
     async with connect(settings) as conn:  # fresh connection: WAL must persist
         assert (await (await conn.execute("PRAGMA journal_mode")).fetchone())[0] == "wal"
         assert (await (await conn.execute("PRAGMA busy_timeout")).fetchone())[0] == 5000
-        assert sqlite3.sqlite_version_info >= (3, 37)  # STRICT tables
+
+
+def test_sqlite_supports_strict_tables():
+    assert sqlite3.sqlite_version_info >= (3, 37)
 
 
 @pytest.mark.parametrize(("ts_ms", "tokens"), [(1.5, 1), (1, -1)])
