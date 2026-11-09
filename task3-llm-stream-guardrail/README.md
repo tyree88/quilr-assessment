@@ -76,8 +76,11 @@ Every quantifier is bounded, so the longest possible match is a provable number:
 
 `K = MAX_MATCH = 128`. The patterns look at most one char past a match (`(?!\d)`), so a match
 ending at or before `len − K` has seen everything it could need. `StreamRedactor` refuses
-`k < MAX_MATCH`. **PII longer than K leaks its head:** a 70-char email local part
-leaks its first 6 chars (asserted in `test_pii_longer_than_k_leaks_its_head_as_documented`).
+`k < MAX_MATCH`. **What the caps cost:** a local part over 64 chars leaks its head (a 70-char
+one leaks its first 6, asserted in `test_pii_longer_than_k_leaks_its_head_as_documented`), and
+an address whose domain part (before the last dot) is over 48 chars or whose TLD is over 14
+letters is **not matched at all** and leaks whole, even though it is far shorter than K:
+`jane@` + 49 chars + `.com` is 58 chars (asserted in `test_email_over_domain_cap_is_not_matched`).
 
 ### Numbers
 
@@ -118,8 +121,9 @@ Response headers: `text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffe
 
 ## Known limits / upgrades
 
-- **Longer than K leaks.** Emails over 128 chars (or local parts over 64) leak their head.
-  Raising the caps raises K, and the cost is TTFT only when the tail looks like PII.
+- **Email caps leak.** A local part over 64 chars leaks its head; a domain part over 48 chars
+  or a TLD over 14 letters is not matched and leaks whole (from 58 chars up, well under K).
+  Raising the caps raises K; the cost is TTFT only while the tail still looks like PII.
 - **Pattern coverage.** SSNs without dashes and cards with double spaces are not matched;
   internationalized emails are not matched. Upgrade: normalize whitespace before matching,
   add patterns per tenant.

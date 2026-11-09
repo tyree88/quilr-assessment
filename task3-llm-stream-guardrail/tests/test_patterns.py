@@ -120,3 +120,9 @@ def test_redact(text, out):
 
 def test_max_match_is_email():
     assert MAX_MATCH == EMAIL_MAX == 128
+
+
+def test_email_over_domain_cap_is_not_matched():
+    # documented limit: 58 chars, under K, but the domain part is 49 > 48
+    leaky = "jane@" + "x" * 49 + ".com"
+    assert len(leaky) == 58 and redact(f"to {leaky}") == f"to {leaky}"
