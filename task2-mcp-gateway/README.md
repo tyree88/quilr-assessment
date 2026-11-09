@@ -1,7 +1,5 @@
 # Task 2 — MCP Security Gateway
 
-> Status: **Phase 1 done (D1–D6)**, build not started. Work plan: [`PLAN.md`](PLAN.md).
-
 An HTTP reverse proxy that sits between an AI agent and a downstream MCP server.
 It reads the caller's role from a Bearer token and blocks `admin_*` tool calls for non-admins
 **before** anything reaches the downstream server.
@@ -24,7 +22,7 @@ MCP **2026-07-28** (Streamable HTTP), compatible with 2025-11-25 clients.
 `-32001 Unauthorized Tool Call` is required by the task brief. MCP 2026-07-28 marks
 `-32000..-32019` as legacy, and we document that tension rather than hide it.
 
-## Error codes (draft — finalized in Phase 1)
+## Error codes
 
 | Situation | HTTP | Code | Message |
 |---|---|---|---|
