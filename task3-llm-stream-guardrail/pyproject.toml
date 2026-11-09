@@ -1,0 +1,19 @@
+[project]
+name = "llm-stream-guardrail"
+version = "0.1.0"
+description = "Streaming LLM gateway that redacts PII across chunk boundaries"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "starlette>=1.10,<2",
+    "httpx>=0.28.1,<0.29",
+    "pydantic>=2.14,<3",
+    "uvicorn>=0.34.2,<0.35",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
