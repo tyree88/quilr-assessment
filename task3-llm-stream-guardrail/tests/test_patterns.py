@@ -26,6 +26,7 @@ def test_email_length_caps():
 
 @pytest.mark.parametrize("text, found", [
     ("ssn 123-45-6789.", "123-45-6789"),
+    ("id123-45-6789", "123-45-6789"),  # letters before digits no longer block it
     ("000-12-3456", "000-12-3456"),  # Q4b: no area-number rules, over-redact
     (
         "\uff11\uff12\uff13-\uff14\uff15-\uff16\uff17\uff18\uff19",
@@ -38,7 +39,7 @@ def test_ssn_matches(text, found):
 
 
 @pytest.mark.parametrize("text", [
-    "call 123-456-7890", "512-555-0199", "1123-45-6789", "123-45-67890", "abc123-45-6789",
+    "call 123-456-7890", "512-555-0199", "1123-45-6789", "123-45-67890",
 ])
 def test_ssn_rejects(text):
     assert SSN.search(text) is None
@@ -49,6 +50,7 @@ def test_ssn_rejects(text):
     ("4111-1111-1111-1111", "4111-1111-1111-1111"),
     ("amex 3782 822463 10005", "3782 822463 10005"),  # 15 digits, 4-6-5 grouping
     ("4111111111111111", "4111111111111111"),
+    ("Visa4111111111111111", "4111111111111111"),  # glued to a word
 ])
 def test_card_shape_matches(text, found):
     assert CARD.search(text).group() == found
@@ -58,7 +60,7 @@ def test_card_shape_matches(text, found):
     "411111111111",  # 12 digits: too short
     "41111111111111111111",  # 20 digits: too long, and no shorter run has a \b
     "4111  1111 1111 1111",  # double space: no 13-digit run left
-    "123-45-6789", "512-555-0199", "x4111111111111111",
+    "123-45-6789", "512-555-0199",
 ])
 def test_card_shape_rejects(text):
     assert CARD.search(text) is None
