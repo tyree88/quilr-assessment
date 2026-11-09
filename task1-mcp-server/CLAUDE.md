@@ -1,11 +1,9 @@
-# Task 1 — Custom MCP Server (stdio, strict validation)
+# Task 1 — Customer-ops MCP Server (stdio, strict validation)
 
-Root `CLAUDE.md` rules apply. This file adds task context.
-**Format: take-home AND 60-min live coding.** Every line must be reproducible from memory under a clock.
+Guidance for working in this folder. The README is the reviewer-facing document; this file
+records the task, the layout, the commands and the conventions the code follows.
 
-**Status:** Phases 0–2 done, Phase 3 pressure test done except the Inspector UI check. The README error-strategy section is written. Interview notes stay local (gitignored), not in the repo.
-
-## Task statement (verbatim from assessment)
+## Task statement
 
 > Write a runnable MCP server (in TypeScript or Python) using the official SDK (`@modelcontextprotocol/sdk` or `mcp`) that exposes two tools:
 > - `get_customer_record` (Input: `customer_id` string formatted as `CUST-XXXXX`).
@@ -22,109 +20,70 @@ Root `CLAUDE.md` rules apply. This file adds task context.
 
 ## Use case
 
-A support assistant: an LLM handles a support conversation and reaches customer data only through this server. **The LLM is an untrusted caller.** It can hallucinate ids, flip signs, or be prompt-injected into sending extra fields. Refunds move money, so the server accepts only well-formed requests that follow the rules.
+A support assistant: an LLM handles a support conversation and reaches customer data only through
+this server. The LLM is treated as an untrusted caller (it can hallucinate ids, flip signs or be
+prompt-injected into sending extra fields), and refunds move money, so only well-formed requests
+that follow the rules are accepted.
 
-## Library decision (settled — do not reopen without a rubric reason)
+## Layout
 
-**Official SDK, `mcp>=2,<3` (2.3.0 locked).** Not standalone `fastmcp` (Prefect).
-
-- The rubric says *"official SDK (`mcp`)"*. Standalone `fastmcp` is a separate project and risks a "did not follow the brief" mark.
-- In v2 the high-level class is **`MCPServer`** (`from mcp.server import MCPServer`). `mcp.server.fastmcp` is **removed** → `ModuleNotFoundError`.
-- **v1 cannot produce -32602 from a tool**: every tool exception becomes an `isError` result. That alone justifies v2.
-
-**Verify on entry:** `uv run python -c "from mcp.server import MCPServer; import mcp; print(mcp.__version__)"`.
-
-## Design (built)
-
-### Error strategy: hybrid, enforced by middleware
-
-| Failure | Example | Raised as | Wire shape |
-|---|---|---|---|
-| Format / schema | `cust-00001`, `amount: -5`, short reason, extra field, `null` args | `MCPError(code=INVALID_PARAMS)` in middleware | JSON-RPC `error`, code **-32602** |
-| Domain | unknown customer, refund over balance | `ToolError` in the tool | `result` with `isError: true` |
-
-**Interview line:** *"Schema violations are protocol errors; domain failures are tool errors the model can recover from."*
-
-### Why middleware, not in-body validation (the trap we hit)
-
-The SDK validates arguments against the tool's type hints **before** the function runs and turns failures into `isError` (`mcp/server/mcpserver/server.py` ~440–455). The original plan was loose signatures (`customer_id: str`) plus `model_validate` in the tool body. That works, but the advertised `inputSchema` then loses its constraints.
-
-Chosen fix: **`ServerMiddleware`** (`MCPServer(..., middleware=[fn])`, see `mcp/server/context.py` ~146–162). It runs before the SDK's check and sees the raw `ctx.method` / `ctx.params`. It validates against the same Pydantic request model and raises `MCPError(-32602)`. Result: **strict signatures** (the schema advertises `pattern` / `exclusiveMinimum` / `minLength`) **and** a real -32602, from one set of types.
-
-### Layout (flat, server only)
-
-The Anthropic course "MCP Chat" starter (`core/`, `main.py`, `mcp_client.py`) was removed: the brief asks
-for a server, and the chat client added prints, lint findings, 3 dependencies and an API key. It is in
-history at `91b9fcc`. Demos use the MCP Inspector or a raw stdio session.
-
-```
-task1-mcp-server/
-├── pyproject.toml        mcp[cli]>=2,<3 · pytest (dev)
-├── models.py             CustomerId · Amount · Reason (Annotated) · GetCustomerRequest · RefundRequest
-├── store.py              Customer · Refund · InsufficientBalance · get_customer · record_refund (pure, no I/O)
-├── mcp_server.py         reject_malformed_arguments middleware · MCPServer("customer-ops", version="0.1.0") · 2 tools
-└── tests/
-    ├── conftest.py               anyio_backend fixture · autouse store reset
-    ├── test_store.py             refund rules, rounding, zero balance
-    ├── test_models.py            parametrized malformed ids / amounts / reasons, extra + missing fields
-    ├── test_tools.py             in-process Client(mcp): -32602 vs isError, no value echo, schema advertises constraints
-    └── test_stdio_isolation.py   real subprocess over pipes; stdin kept open until each reply arrives
-```
-
-### Decisions log
-
-| Decision | Choice | Why |
-|---|---|---|
-| `CUST-XXXXX` | `^CUST-[0-9]{5}$` | `[0-9]` not `\d` (`\d` matches Arabic-Indic digits); anchored both ends |
-| `amount` | `gt=0`, `le=1_000_000`, `allow_inf_nan=False`, strict float | 0, nan, inf, `"10"` and `True` rejected; cap marked as a shortcut |
-| `reason` | strip, then `min_length=10`, `max_length=500` | `"   short    "` must fail |
-| Extra fields | `extra="forbid"`, advertised as `additionalProperties: false` | rubric says strict; injected `approved_by` rejected |
-| Unknown customer | `ToolError` | well-formed request, the model can retry |
-| Over-balance refund | reject (option A), balance unchanged | no partial refunds; check + write with no `await` between |
-| Error `data` | field names + rule messages only | never echo caller values back |
-| Return shape | Pydantic models → `structuredContent` + `outputSchema` | structured output for free |
-| Tests | anyio pytest plugin, no pytest-asyncio | anyio ships with `mcp` |
-| `additionalProperties` | set on the registered tool after decoration | no public SDK hook; private `_tool_manager`, marked `shortcut:` |
-| Unknown tool | `-32602` from middleware; `REQUEST_MODELS` is the allowlist | MCP spec lists unknown tools as protocol errors; the SDK default is `isError`. A test keeps the map equal to the registered tools |
-| Sub-cent amounts | rejected (`round(v, 2) != v`) | found by probing: `0.005` gave a receipt of 0.005 but cut the balance by 0.01 |
-| Invisible reason | at least 10 non-`Cf` characters | `strip()` keeps zero-width spaces; 12 of them passed `min_length=10` |
-| Malformed JSON / non-object `params` | no reply (SDK transport drops it) | documented in the README as a known limitation, not patched |
-
-## Pressure Test Checklist (status from the 2026-11 run)
-
-- [x] `python mcp_server.py </dev/null` → exit 0, **0 bytes** on stdout and stderr
-- [x] `test_every_stdout_line_is_jsonrpc`: handshake, tools/list, -32602 ×2, isError, valid refund — every line JSON-RPC 2.0
-- [x] `grep -rn "print(" --include='*.py' .` → only a comment in `tests/test_stdio_isolation.py`
-- [x] `python -c "import mcp_server"` → 0 bytes out (no import-time side effects)
-- [x] `cust-00001` / `amount: -5` / `reason: "too short"` → `-32602` (tests + manual stdio run)
-- [x] well-formed unknown id → `isError: true`
-- [x] `arguments: null` → `-32602 "Field required"`, server keeps running
-- [x] `inputSchema` advertises `pattern` / `exclusiveMinimum` / `minLength` / `additionalProperties: false`
-- [x] Mutation check: a stray `print` at import or inside a tool makes the stdio test fail
-- [x] `mcp run mcp_server.py </dev/null` → exit 0, 0 bytes (the Inspector's launch path imports `store`/`models`)
-- [ ] Inspector UI: `uv run mcp dev mcp_server.py` → Connect → run the 4 cases, screenshot
-- [x] `ruff check .` clean; `pytest -q` → 51 passed
-
-## Interview questions you will drill me on
-
-- "Why `MCPError` for format errors and `ToolError` for not-found?"
-- "The SDK already validates arguments. Why the middleware?" (→ it would emit `isError`, not -32602)
-- "What exactly does the SDK do to stdout during serving, and what still leaks?"
-- "Why is there no client in the repo?" (→ the brief asks for a server; the Inspector and the subprocess test are the client)
-- "Why pin `mcp>=2,<3`? What breaks on v1?"
-- "Where would auth go if this were HTTP instead of stdio?"
-- "How does the client learn the `CUST-XXXXX` constraint before calling?" (→ `inputSchema.pattern`)
-- "Show me the regex. What does it reject that a naive `startswith('CUST-')` or `\d` would accept?"
-
-## Live-coding (60 min) time budget
-
-| Minute | Deliverable |
+| Path | Job |
 |---|---|
-| 0–5 | `uv init`, pin `mcp[cli]>=2,<3`, empty `MCPServer` runs silent on `</dev/null` |
-| 5–20 | `models.py` + `test_models.py` (param cases) |
-| 20–30 | `store.py` + the two tools with `ToolError` |
-| 30–40 | middleware → -32602; `test_tools.py` (-32602 path + isError path) |
-| 40–50 | stdio isolation test (keep stdin open) |
-| 50–60 | Inspector demo, `ruff`, commit |
+| `models.py` | `CustomerId`, `Amount`, `Reason` (`Annotated` types), `GetCustomerRequest`, `RefundRequest` |
+| `store.py` | In-memory `Customer` / `Refund` store and refund rules (pure, no I/O) |
+| `mcp_server.py` | `reject_malformed_arguments` middleware, `MCPServer("customer-ops")`, the two tools |
+| `tests/test_models.py` | Malformed ids, amounts, reasons; extra and missing fields |
+| `tests/test_store.py` | Refund rules, rounding, zero balance |
+| `tests/test_tools.py` | In-process `Client`: -32602 vs `isError`, no value echo, advertised schema |
+| `tests/test_stdio_isolation.py` | Real subprocess over pipes: every stdout line is JSON-RPC |
 
-If behind at minute 40: cut `test_stdio_isolation.py` to a manual `printf … | python mcp_server.py` demo. Never cut the models or the -32602 path.
+## Commands
+
+```bash
+uv sync --locked
+uv run pytest -q
+uvx ruff@0.17.4 check .
+uv run python mcp_server.py      # stdio server; silent until a client sends initialize
+uv run mcp dev mcp_server.py     # MCP Inspector
+```
+
+## SDK
+
+Official SDK, `mcp>=2,<3` (2.3.0 locked). In v2 the high-level class is `MCPServer`
+(`from mcp.server import MCPServer`); `mcp.server.fastmcp` no longer exists. Result fields are
+snake_case (`input_schema`, `is_error`, `structured_content`).
+
+## Error strategy
+
+| Failure | Example | Raised as | On the wire |
+|---|---|---|---|
+| Unknown tool | `delete_customer` | `MCPError(INVALID_PARAMS)` in middleware | JSON-RPC `error`, `-32602` |
+| Format / schema | `cust-00001`, `amount: -5`, short reason, extra field, `null` arguments | `MCPError(INVALID_PARAMS)` in middleware | JSON-RPC `error`, `-32602` |
+| Business rule | unknown customer, refund over balance | `ToolError` in the tool | `result` with `isError: true` |
+
+The SDK validates arguments from the tool's type hints before the function runs and turns
+failures into `isError`. `reject_malformed_arguments` (a `ServerMiddleware`) runs first, sees the
+raw `ctx.method` / `ctx.params`, validates against the same Pydantic models and raises `-32602`.
+The tool signatures keep their strict types, so `inputSchema` still advertises `pattern`,
+`exclusiveMinimum`, `minLength` and `additionalProperties: false`. `REQUEST_MODELS` is the
+allowlist of tool names; a test keeps it equal to the registered tools.
+
+## Validation rules
+
+| Field | Rule |
+|---|---|
+| `customer_id` | `^CUST-[0-9]{5}$` (`[0-9]`, not `\d`, which matches non-ASCII digits) |
+| `amount` | strict float, `> 0`, `<= 1_000_000`, no inf/nan, at most 2 decimals |
+| `reason` | stripped, 10–500 characters, at least 10 that are not invisible (category Cf) |
+| Extra fields | rejected (`extra="forbid"`) |
+| Over-balance refund | rejected, balance unchanged; check and write with no `await` between |
+
+## Conventions
+
+- **stdout carries only JSON-RPC.** Logging goes to stderr; no `print` in server code, and
+  importing a module writes nothing. `test_stdio_isolation.py` fails on any stray output.
+- **Error `data` holds field names and rule messages only,** never the caller's values.
+- **One set of types** in `models.py` drives both the validator and the advertised schema.
+- **Tests** use the anyio pytest plugin; `conftest.py` resets the store for every test.
+- **Known limitation:** a line that is not valid JSON, or `params` that is not an object, is
+  dropped by the SDK's stdio transport before server code runs (documented in the README).

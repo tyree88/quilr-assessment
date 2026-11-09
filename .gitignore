@@ -22,7 +22,7 @@ build/
 # macOS
 .DS_Store
 
-# Interview prep stays local
+# Local notes (never committed)
 INTERVIEW_NOTES.md
 
 # Local work plans (never committed)
