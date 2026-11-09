@@ -6,3 +6,5 @@ CREATE TABLE IF NOT EXISTS usage (
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS usage_tenant_ts ON usage (tenant, ts_ms);
+-- Eviction deletes expired rows for every tenant, so idle tenants cannot grow the table.
+CREATE INDEX IF NOT EXISTS usage_ts ON usage (ts_ms);
