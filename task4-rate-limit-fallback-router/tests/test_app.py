@@ -4,7 +4,7 @@ import logging
 import httpx
 import pytest
 
-from llm_router.app import create_app
+from llm_router.app import MAX_BODY_BYTES, create_app
 from llm_router.config import Settings
 from llm_router.db import connect, init_db
 from llm_router.errors import ErrorPayload
@@ -113,3 +113,27 @@ async def test_client_cancel_releases_quota_and_cancels_primary(settings):
             await task
     assert primary.cancelled == 1
     assert await window(settings) == []
+
+
+async def test_oversized_body_is_413_by_content_length(settings):
+    async with client_for(settings, FakeProvider("p")) as c:
+        resp = await c.post("/v1/completions", content=b"x" * (MAX_BODY_BYTES + 1), headers=KEY)
+    assert resp.status_code == 413 and error_of(resp)["type"] == "invalid_request"
+
+
+async def test_oversized_chunked_body_is_413_while_streaming(settings):
+    async def chunks():
+        for _ in range(MAX_BODY_BYTES // 65_536 + 2):
+            yield b"x" * 65_536
+
+    async with client_for(settings, FakeProvider("p")) as c:
+        resp = await c.post("/v1/completions", content=chunks(), headers=KEY)
+    assert resp.status_code == 413 and error_of(resp)["type"] == "invalid_request"
+
+
+async def test_largest_valid_prompt_fits_under_the_cap(settings):
+    body = '{"prompt": "' + "\\u00e9" * 200_000 + '", "max_tokens": 1}'
+    s = settings.model_copy(update={"limit_tokens": 60_000})
+    async with client_for(s, FakeProvider("p")) as c:
+        resp = await c.post("/v1/completions", content=body.encode(), headers=KEY)
+    assert resp.status_code == 200

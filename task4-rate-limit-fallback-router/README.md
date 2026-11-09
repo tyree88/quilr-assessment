@@ -119,6 +119,7 @@ The `request_id` is also sent as the `X-Request-ID` header. The server log line 
 | `upstream_unavailable` | 503 | both providers failed (429, timeout, 5xx or connection error) |
 | `invalid_request` | 400 | bad JSON, unknown field, wrong type, primary 4xx, estimate over the limit |
 | `invalid_request` | 401 | missing or blank `X-API-Key` |
+| `invalid_request` | 413 | request body over 2 MiB (counted while reading, so a missing or false `Content-Length` doesn't help) |
 | `invalid_request` | 404 / 405 | unknown path or method |
 | `internal` | 500 | anything unexpected, including a SQLite lock held past `busy_timeout` |
 

@@ -22,6 +22,22 @@ from llm_router.router import ModelRouter
 
 log = logging.getLogger("llm_router")
 
+# A max-size prompt (200,000 chars) written entirely as JSON \uXXXX escapes is 1.2 MB; 2 MiB
+# admits every valid body and stops a client from making us buffer an unbounded one.
+MAX_BODY_BYTES = 2 * 1024 * 1024
+
+
+async def _read_capped(request: Request) -> bytes:
+    """Read the body, stopping as soon as it passes the cap (Content-Length can lie or be
+    absent with chunked encoding, so the bytes actually read are what count)."""
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > MAX_BODY_BYTES:
+            raise GatewayError(ErrorType.INVALID_REQUEST, status=413)
+        chunks.append(chunk)
+    return b"".join(chunks)
+
 
 def create_app(
     settings: Settings,
@@ -51,7 +67,7 @@ def create_app(
             raise GatewayError(ErrorType.INVALID_REQUEST, status=401)
         tenant = hashlib.sha256(key.encode()).hexdigest()  # the raw key never hits disk
         try:
-            req = CompletionRequest.model_validate_json(await request.body())
+            req = CompletionRequest.model_validate_json(await _read_capped(request))
         except ValidationError:
             raise GatewayError(ErrorType.INVALID_REQUEST) from None
 
