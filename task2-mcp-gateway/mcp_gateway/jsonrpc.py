@@ -62,6 +62,7 @@ def _echo_id(raw: dict) -> RequestId:
 
 
 def parse_request(body: bytes) -> JsonRpcRequest | JSONResponse:
+    """Decode JSON (else -32700), require one object (else -32600), validate the envelope (else -32600)."""
     # shortcut: no body size cap, add one (Content-Length check or reverse proxy) before production
     try:
         raw = json.loads(

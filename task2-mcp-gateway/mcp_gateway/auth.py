@@ -11,6 +11,7 @@ _B64TOKEN = re.compile(r"[A-Za-z0-9\-._~+/]+=*")
 
 
 def extract_bearer(authorization: str | None) -> str | None:
+    """Return the token, or None when the header is missing, not Bearer, or not one b64token."""
     if not authorization:
         return None
     scheme, _, token = authorization.partition(" ")

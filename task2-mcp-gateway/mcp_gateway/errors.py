@@ -22,6 +22,7 @@ def make_error(
     data: dict | None = None,
     headers: dict[str, str] | None = None,
 ) -> JSONResponse:
+    """Build a JSON-RPC error response; id is always present and data is sent only when given."""
     error: dict = {"code": code, "message": message}
     if data is not None:
         error["data"] = data
