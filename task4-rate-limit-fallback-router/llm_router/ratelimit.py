@@ -54,3 +54,15 @@ class SlidingWindowLimiter:
         # up keeps it >= 1 s.
         # shortcut: oldest row may free too little, upgrade = walk rows until enough expire.
         return -(-(oldest_ts_ms + self._s.window_ms - now) // 1000)
+
+    async def reconcile(self, reservation_id: int, actual_tokens: int) -> None:
+        """Replace the estimate with what the provider reports. One statement = atomic."""
+        async with connect(self._s) as conn:
+            await conn.execute(
+                "UPDATE usage SET tokens = ? WHERE id = ?", (actual_tokens, reservation_id)
+            )
+
+    async def release(self, reservation_id: int) -> None:
+        """Failed or cancelled calls give their reservation back."""
+        async with connect(self._s) as conn:
+            await conn.execute("DELETE FROM usage WHERE id = ?", (reservation_id,))

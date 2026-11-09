@@ -1,4 +1,5 @@
 import asyncio
+import sqlite3
 
 import pytest
 
@@ -110,3 +111,23 @@ async def test_concurrent_race_admits_exactly_the_limit(limiter, settings):
     assert len(wins) == 25 and len(losses) == 25
     assert all(e.type is ErrorType.RATE_LIMITED for e in losses)
     assert await rows(settings) == 25
+
+
+async def test_reconcile_replaces_estimate(limiter):
+    rid = await limiter.reserve("t", 5_000)
+    await limiter.reconcile(rid, 1_200)
+    await limiter.reserve("t", 48_800)            # 1,200 + 48,800 = 50,000: fits
+    await denied(limiter, "t", 1)
+
+
+async def test_release_returns_quota(limiter, settings):
+    rid = await limiter.reserve("t", 50_000)
+    await limiter.release(rid)
+    assert await rows(settings) == 0
+    await limiter.reserve("t", 50_000)
+
+
+async def test_reconcile_rejects_negative_actual(limiter):
+    rid = await limiter.reserve("t", 10)
+    with pytest.raises(sqlite3.IntegrityError):
+        await limiter.reconcile(rid, -1)
