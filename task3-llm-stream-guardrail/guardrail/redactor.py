@@ -29,15 +29,14 @@ class StreamRedactor:
         text = self._ctx + self._buf
         start = len(self._ctx)
         limit = len(text) if final else len(text) - self._k
-        out, pos, cut = "", start, None
+        out, pos = "", start
+        cut = max(limit, start)
         for m in PII_RE.finditer(text, start):  # pos= keeps the context char visible
             if m.end() > limit:
-                cut = m.start()  # may still grow with more text: hold from its start
+                cut = min(cut, m.start())  # may still grow: hold from its start, never past limit
                 break
             out += text[pos:m.start()] + replacement(m)
             pos = m.end()
-        if cut is None:
-            cut = max(limit, pos)
         out += text[pos:cut]
         self._ctx, self._buf = text[cut - 1:cut], text[cut:]
         return out

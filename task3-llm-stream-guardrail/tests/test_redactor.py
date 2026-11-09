@@ -86,3 +86,13 @@ def test_context_char_keeps_digit_lookbehind_across_the_hold_point():
     assert redact(s) == s
     for i in range(len(s) + 1):
         assert run([s[:i], s[i:]]) == redact(s), i
+
+
+def test_fuzz_invariance_on_pii_dense_text():
+    rng = random.Random(7)
+    parts = ["john", "@", "example", ".", "com", "123", "-", "45", "6789", "4111", " ", "1111",
+             "x", "\u200b", "0", "9", "_", "a.b", "co", "uk", "5555", "4444", ",", "\n"]
+    for _ in range(400):
+        s = "".join(rng.choice(parts) for _ in range(rng.randint(1, 80)))
+        for chunks in splits(s, rng):
+            assert run(chunks) == redact(s), s
