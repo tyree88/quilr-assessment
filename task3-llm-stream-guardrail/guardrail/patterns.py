@@ -10,3 +10,15 @@ SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 # 13–19 digits, one optional space or dash between digits: 19 + 18 separators = 37
 CARD_MAX = 37
 CARD = re.compile(r"\b(?:\d[ -]?){12,18}\d\b")
+
+
+def luhn_ok(number: str) -> bool:
+    """Luhn checksum over the decimal digits of a CARD match; separators are skipped.
+
+    Only CARD matches (13+ digits) reach this, so the empty-input case never occurs.
+    """
+    total = 0
+    for i, ch in enumerate(reversed([c for c in number if c.isdecimal()])):
+        d = int(ch) * (2 if i % 2 else 1)
+        total += d - 9 if d > 9 else d
+    return total % 10 == 0

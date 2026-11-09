@@ -1,6 +1,6 @@
 import pytest
 
-from guardrail.patterns import CARD, CARD_MAX, EMAIL, EMAIL_MAX, SSN, SSN_MAX
+from guardrail.patterns import CARD, CARD_MAX, EMAIL, EMAIL_MAX, SSN, SSN_MAX, luhn_ok
 
 
 @pytest.mark.parametrize("text, found", [
@@ -67,3 +67,16 @@ def test_card_shape_rejects(text):
 def test_card_length_cap():
     longest = " ".join(["1"] * 19)
     assert len(longest) == CARD_MAX and CARD.fullmatch(longest)
+
+
+@pytest.mark.parametrize("number, ok", [
+    ("4111 1111 1111 1111", True),  # Visa test number
+    ("4111-1111-1111-1111", True),  # separators ignored
+    ("3782 822463 10005", True),  # Amex test number, 15 digits
+    ("5555555555554444", True),  # Mastercard test number
+    ("4111 1111 1111 1112", False),  # last digit changed
+    ("4111111111111121", False),  # sums to 0 mod 10 only if you skip doubling
+    ("2024 2025 2026 2027", False),  # a list of years: shape matches, checksum does not
+])
+def test_luhn(number, ok):
+    assert luhn_ok(number) is ok
