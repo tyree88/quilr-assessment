@@ -145,8 +145,7 @@ All fields are strict: a zero, a negative or an unknown field fails at startup.
 ## Known limits
 
 - **One SQLite writer.** Every reservation takes the database write lock, so throughput is bounded by sequential write transactions on one file (not benchmarked here). Past that, move the log to Redis: `ZADD` plus `ZREMRANGEBYSCORE` in one Lua script per tenant gives the same exact window with no single-file lock.
-- **The token estimate is `chars/4`.** Upgrade to the provider's tokenizer. Reconcile corrects the stored value either way.
-- **Reconcile can push a tenant over** if the provider uses more than the estimate. Every request reserves its full `max_tokens`, so this needs a provider that ignores `max_tokens`.
+- **The `chars/4` estimate under-counts CJK text and code, so a tenant can go over the limit.** A 40,000-character CJK prompt with the default `max_tokens=256` estimates to 10,256 tokens but costs about 40,000. Two such requests sent at once are both admitted (20,512 reserved) and then reconcile to about 80,000, well over the 50,000 limit; the tenant is blocked only afterwards, until those rows leave the window. Reconcile makes the stored count accurate, but it cannot undo an admission. Upgrade: count prompt tokens with the provider's tokenizer before reserving.
 - **`Retry-After` uses the oldest row.** If that row frees fewer tokens than the next request needs, the client waits again. Upgrade: walk the rows oldest-first until enough expire.
 - **Wall-clock time.** Rows are shared across processes and restarts, so time is `time.time_ns()`, not a monotonic clock. An NTP step backward briefly over-counts, which is the safe direction.
 - **A cancel that lands during `COMMIT` leaves its row.** The commit already happened in aiosqlite's worker thread, but the caller never received the id, so nothing releases it. The `CancelledError` still propagates, and the row expires after one window.
