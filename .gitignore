@@ -24,3 +24,5 @@ build/
 
 # Interview prep stays local
 INTERVIEW_NOTES.md
+# Local work plans (never committed)
+PLAN.md
