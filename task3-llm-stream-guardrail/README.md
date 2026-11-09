@@ -8,7 +8,7 @@ provider and streams the answer back, replacing emails, SSNs and card numbers wi
 
 ```bash
 uv sync
-uv run pytest -q                      # 97 tests
+uv run pytest -q                      # 109 tests
 uvx ruff@0.17.4 check .
 uv run python probe.py                # 30 hostile cases over a live uvicorn socket
 uv run uvicorn guardrail.app:app      # gateway on :8000, built-in mock upstream
