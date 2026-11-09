@@ -1,6 +1,16 @@
 import pytest
 
-from guardrail.patterns import CARD, CARD_MAX, EMAIL, EMAIL_MAX, SSN, SSN_MAX, luhn_ok
+from guardrail.patterns import (
+    CARD,
+    CARD_MAX,
+    EMAIL,
+    EMAIL_MAX,
+    MAX_MATCH,
+    SSN,
+    SSN_MAX,
+    luhn_ok,
+    redact,
+)
 
 
 @pytest.mark.parametrize("text, found", [
@@ -82,3 +92,24 @@ def test_card_length_cap():
 ])
 def test_luhn(number, ok):
     assert luhn_ok(number) is ok
+
+
+@pytest.mark.parametrize("text, out", [
+    (
+        "mail a.b@example.com, ssn 123-45-6789, card 4111 1111 1111 1111, bad 4111 1111 1111 1112.",
+        "mail [REDACTED], ssn [REDACTED], card [REDACTED], bad 4111 1111 1111 1112.",
+    ),
+    ("id 123-45-6789-0123 end", "id [REDACTED]-0123 end"),  # SSN alternative wins at its start
+    ("ref 4111 123-45-6789 end", "ref 4111 [REDACTED] end"),  # failed card holds an SSN
+    ("4111111111111111@example.com", "[REDACTED]"),  # email wins at the same start
+    ("call 512-555-0199", "call 512-555-0199"),  # phone untouched
+    ("john\u200b@exa\u00admple.com", "[REDACTED]"),  # invisible chars stripped first
+    ("123\u2060-45-6789", "[REDACTED]"),
+    ("family \U0001f468\u200d\U0001f469", "family \U0001f468\u200d\U0001f469"),  # ZWJ kept
+])
+def test_redact(text, out):
+    assert redact(text) == out
+
+
+def test_max_match_is_email():
+    assert MAX_MATCH == EMAIL_MAX == 128

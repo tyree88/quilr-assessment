@@ -24,3 +24,36 @@ def luhn_ok(number: str) -> bool:
         d = int(ch) * (2 if i % 2 else 1)
         total += d - 9 if d > 9 else d
     return total % 10 == 0
+
+
+REDACTED = "[REDACTED]"
+MAX_MATCH = max(EMAIL_MAX, SSN_MAX, CARD_MAX)  # 128: the stream hold length K comes from this
+
+# One pass, one alternation. Leftmost match wins; at the same start, earlier names win.
+PII_RE = re.compile("|".join(
+    f"(?P<{name}>{p.pattern})" for name, p in (("email", EMAIL), ("ssn", SSN), ("card", CARD))
+))
+
+# Invisible format chars a model (or a prompt injection) can wedge inside PII to split it.
+# Not all of Unicode category Cf: U+200D (zero-width joiner) and the tag chars build emoji.
+_INVISIBLE = dict.fromkeys(
+    [0x00AD, 0x180E, 0x200B, 0x200C, 0x200E, 0x200F, 0xFEFF,
+     *range(0x202A, 0x202F), *range(0x2060, 0x2065), *range(0x2066, 0x206A)]
+)
+
+
+def strip_invisible(text: str) -> str:
+    """Per-character, so it gives the same result however the text is chunked."""
+    return text.translate(_INVISIBLE)
+
+
+def replacement(m: re.Match[str]) -> str:
+    """What a committed PII_RE match becomes. Shared by redact() and StreamRedactor."""
+    if m.lastgroup == "card" and not luhn_ok(m.group()):
+        return SSN.sub(REDACTED, m.group())  # a card that fails Luhn can still hold an SSN
+    return REDACTED
+
+
+def redact(text: str) -> str:
+    """Whole-string reference: the answer the streaming redactor must reproduce."""
+    return PII_RE.sub(replacement, strip_invisible(text))
