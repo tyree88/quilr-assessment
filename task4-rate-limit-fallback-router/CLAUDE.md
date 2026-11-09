@@ -80,7 +80,7 @@ task4-rate-limit-fallback-router/
 4. Fallback on 5xx? → **Decided: always** (fixed, not configurable). 429, timeout, 5xx and connection errors all mean "this provider cannot serve now".
 5. Fallback on primary **4xx other than 429** (400 bad request)? → **No.** Request is wrong; secondary won't fix it. Return `invalid_request`.
 6. `Retry-After` on our own 429 → compute from oldest row in window: `(oldest_ts + 60s − now)`. Cheap, correct, impressive.
-7. One `aiosqlite` connection shared, or pool? → **Decided: short-lived connection per `reserve()`** + `BEGIN IMMEDIATE` + `busy_timeout`, no app-level lock. A shared aiosqlite connection is one `sqlite3` connection = one transaction for every coroutine, so `BEGIN IMMEDIATE` on it isolates nothing (second `BEGIN` → "cannot start a transaction within a transaction"). SQLite's write lock is per connection, so per-call connections make it the one guard, across processes too. See `PLAN.md` decision 1.
+7. One `aiosqlite` connection shared, or pool? → **Decided: short-lived connection per `reserve()`** + `BEGIN IMMEDIATE` + `busy_timeout`, no app-level lock. A shared aiosqlite connection is one `sqlite3` connection = one transaction for every coroutine, so `BEGIN IMMEDIATE` on it isolates nothing (second `BEGIN` → "cannot start a transaction within a transaction"). SQLite's write lock is per connection, so per-call connections make it the one guard, across processes too. See `README.md` → Design and Decisions.
 8. Streaming responses? → **Out of scope.** Say so in README; Task 3 covers streaming.
 
 ## Reserve-then-reconcile transaction (pair-build first; it is the heart of the grade)
