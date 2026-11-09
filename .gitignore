@@ -24,3 +24,6 @@ build/
 
 # Interview prep stays local
 INTERVIEW_NOTES.md
+
+# Task 2 local work plan (never committed)
+task2-mcp-gateway/PLAN.md
