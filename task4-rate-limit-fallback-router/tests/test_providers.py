@@ -58,3 +58,13 @@ async def test_connection_error_has_no_status():
     with pytest.raises(ProviderError) as exc:
         await provider(refuse).complete(REQ)
     assert exc.value.status is None
+
+
+async def test_undecodable_body_has_no_status():
+    # Claims gzip, is not gzip: httpx raises DecodingError, which must still fail over.
+    def bad_gzip(request):
+        return httpx.Response(200, headers={"Content-Encoding": "gzip"}, content=b"not gzip")
+
+    with pytest.raises(ProviderError) as exc:
+        await provider(bad_gzip).complete(REQ)
+    assert exc.value.status is None

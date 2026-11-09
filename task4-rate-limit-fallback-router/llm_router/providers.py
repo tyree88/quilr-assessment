@@ -19,7 +19,7 @@ class ProviderError(Exception):
 
     def __init__(self, status: int | None, detail: str):
         super().__init__(detail)
-        self.status = status  # None = no HTTP response (connection error)
+        self.status = status  # None = no usable HTTP response (connection, decoding)
         self.detail = detail
 
 
@@ -51,7 +51,7 @@ class HttpProvider:
     async def complete(self, req: CompletionRequest) -> ProviderResponse:
         try:
             resp = await self._client.post(self._url, json=req.model_dump())
-        except httpx.TransportError as exc:
+        except httpx.HTTPError as exc:  # transport, decoding, redirects: no usable response
             raise ProviderError(None, f"{type(exc).__name__}: {exc}") from exc
         if resp.status_code != 200:
             # Retry-After from the provider is deliberately not parsed (decision 10).
