@@ -1,6 +1,6 @@
 import pytest
 
-from guardrail.patterns import EMAIL, EMAIL_MAX, SSN, SSN_MAX
+from guardrail.patterns import CARD, CARD_MAX, EMAIL, EMAIL_MAX, SSN, SSN_MAX
 
 
 @pytest.mark.parametrize("text, found", [
@@ -42,3 +42,28 @@ def test_ssn_matches(text, found):
 ])
 def test_ssn_rejects(text):
     assert SSN.search(text) is None
+
+
+@pytest.mark.parametrize("text, found", [
+    ("card 4111 1111 1111 1111 ok", "4111 1111 1111 1111"),
+    ("4111-1111-1111-1111", "4111-1111-1111-1111"),
+    ("amex 3782 822463 10005", "3782 822463 10005"),  # 15 digits, 4-6-5 grouping
+    ("4111111111111111", "4111111111111111"),
+])
+def test_card_shape_matches(text, found):
+    assert CARD.search(text).group() == found
+
+
+@pytest.mark.parametrize("text", [
+    "411111111111",  # 12 digits: too short
+    "41111111111111111111",  # 20 digits: too long, and no shorter run has a \b
+    "4111  1111 1111 1111",  # double space: no 13-digit run left
+    "123-45-6789", "512-555-0199", "x4111111111111111",
+])
+def test_card_shape_rejects(text):
+    assert CARD.search(text) is None
+
+
+def test_card_length_cap():
+    longest = " ".join(["1"] * 19)
+    assert len(longest) == CARD_MAX and CARD.fullmatch(longest)
